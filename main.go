@@ -17,4 +17,11 @@ func main() {
 	} else {
 		fmt.Printf("starting crawl of: %s\n", args[0])
 	}
+
+	html, err := getHTML(args[0])
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Println(html)
 }
