@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -18,10 +21,19 @@ func main() {
 		fmt.Printf("starting crawl of: %s\n", args[0])
 	}
 
-	html, err := getHTML(args[0])
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println(html)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Set up signal handling for Ctrl+C
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Println("\nReceived interrupt signal, stopping crawler...")
+		cancel() // Cancel the context
+	}()
+
+	pages := make(map[string]int)
+	crawlPage(ctx, args[0], args[0], pages)
+	fmt.Printf("Crawling completed. Found %d pages\n", len(pages))
 }
