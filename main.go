@@ -3,10 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
+
+type config struct {
+	pages              map[string]int
+	baseURL            *url.URL
+	mu                 *sync.Mutex
+	concurrencyControl chan struct{}
+	wg                 *sync.WaitGroup
+}
 
 func main() {
 	args := os.Args[1:]
@@ -33,7 +43,23 @@ func main() {
 		cancel() // Cancel the context
 	}()
 
-	pages := make(map[string]int)
-	crawlPage(ctx, args[0], args[0], pages)
-	fmt.Printf("Crawling completed. Found %d pages\n", len(pages))
+	baseURL, err := url.Parse(args[0])
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	cfg := config{
+		pages:              make(map[string]int),
+		baseURL:            baseURL,
+		mu:                 &sync.Mutex{},
+		concurrencyControl: make(chan struct{}, 5),
+		wg:                 &sync.WaitGroup{},
+	}
+	cfg.wg.Add(1)
+	go func() {
+		defer cfg.wg.Done()
+		cfg.crawlPage(ctx, baseURL.String())
+	}()
+	cfg.wg.Wait()
+	fmt.Printf("Crawling completed. Found %d pages\n", len(cfg.pages))
 }

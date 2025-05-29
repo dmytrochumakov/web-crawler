@@ -7,7 +7,9 @@ import (
 	"os"
 )
 
-func crawlPage(ctx context.Context, rawBaseURL, rawCurrentURL string, pages map[string]int) {
+func (cfg *config) crawlPage(ctx context.Context, rawCurrentURL string) {
+	rawBaseURL := cfg.baseURL.String()
+
 	select {
 	case <-ctx.Done():
 		fmt.Println("\nCrawling stopped by user")
@@ -23,12 +25,13 @@ func crawlPage(ctx context.Context, rawBaseURL, rawCurrentURL string, pages map[
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	_, ok := pages[normalizedURL]
+	val, ok := cfg.getPage(normalizedURL)
 	if ok {
-		pages[normalizedURL] += 1
+		val += 1
+		cfg.setPage(normalizedURL, val)
 		return
 	} else {
-		pages[normalizedURL] = 1
+		cfg.setPage(normalizedURL, 1)
 	}
 	html, err := getHTML(rawBaseURL)
 	if err != nil {
@@ -46,18 +49,34 @@ func crawlPage(ctx context.Context, rawBaseURL, rawCurrentURL string, pages map[
 			fmt.Println("\nCrawling stopped by user")
 			return
 		default:
-			crawlPage(ctx, rawBaseURL, url, pages)
+			cfg.wg.Add(1)
+			go func(url string) {
+				defer cfg.wg.Done()
+				cfg.crawlPage(ctx, url)
+			}(url)
 		}
 	}
 }
 
-func isSameDomain(rawBaseURL, rawCurrentURL string) bool {
+func (cfg config) getPage(key string) (int, bool) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+	val, ok := cfg.pages[key]
+	return val, ok
+}
+
+func (cfg config) setPage(key string, value int) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+	cfg.pages[key] = value
+}
+
+func isSameDomain(rawBaseURL string, rawCurrentURL string) bool {
 	baseURL, err := url.Parse(rawBaseURL)
 	if err != nil {
-		fmt.Printf("failed to parse base URL: %w\n", err)
+		fmt.Printf("failed to parse current URL: %w\n", err)
 		return false
 	}
-
 	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
 		fmt.Printf("failed to parse current URL: %w\n", err)
