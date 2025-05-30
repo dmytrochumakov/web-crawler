@@ -1,18 +1,17 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 	"os"
-	"os/signal"
+	"strconv"
 	"sync"
-	"syscall"
 )
 
 type config struct {
 	pages              map[string]int
 	baseURL            *url.URL
+	maxPages           int
 	mu                 *sync.Mutex
 	concurrencyControl chan struct{}
 	wg                 *sync.WaitGroup
@@ -21,45 +20,61 @@ type config struct {
 func main() {
 	args := os.Args[1:]
 
-	if len(args) < 1 {
-		fmt.Println("no website provided")
+	if len(args) < 3 {
+		fmt.Println("no website or max concurrent operations or max pages provided")
 		os.Exit(1)
-	} else if len(args) > 1 {
-		fmt.Println("too many arguments provided")
-		os.Exit(1)
-	} else {
-		fmt.Printf("starting crawl of: %s\n", args[0])
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	fmt.Printf("starting crawl of: %s\n", args[0])
 
-	// Set up signal handling for Ctrl+C
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		fmt.Println("\nReceived interrupt signal, stopping crawler...")
-		cancel() // Cancel the context
-	}()
-
-	baseURL, err := url.Parse(args[0])
+	rawBaseURL := args[0]
+	baseURL, err := url.Parse(rawBaseURL)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+
+	maxConcurrentOperations, err := strconv.Atoi(args[1])
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	maxPages, err := strconv.Atoi(args[2])
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	cfg := config{
 		pages:              make(map[string]int),
 		baseURL:            baseURL,
+		maxPages:           maxPages,
 		mu:                 &sync.Mutex{},
-		concurrencyControl: make(chan struct{}, 5),
+		concurrencyControl: make(chan struct{}, maxConcurrentOperations),
 		wg:                 &sync.WaitGroup{},
 	}
+
 	cfg.wg.Add(1)
-	go func() {
-		defer cfg.wg.Done()
-		cfg.crawlPage(ctx, baseURL.String())
-	}()
+	go cfg.crawlPage(rawBaseURL)
 	cfg.wg.Wait()
+
+	for normalizedURL, count := range cfg.pages {
+		fmt.Printf("%d - %s\n", count, normalizedURL)
+	}
+
 	fmt.Printf("Crawling completed. Found %d pages\n", len(cfg.pages))
+}
+
+func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	if _, visited := cfg.pages[normalizedURL]; visited {
+		cfg.pages[normalizedURL]++
+		return false
+	}
+
+	cfg.pages[normalizedURL] = 1
+	return true
 }
