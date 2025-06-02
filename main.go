@@ -59,11 +59,8 @@ func main() {
 	go cfg.crawlPage(rawBaseURL)
 	cfg.wg.Wait()
 
-	for normalizedURL, count := range cfg.pages {
-		fmt.Printf("%d - %s\n", count, normalizedURL)
-	}
+	printReport(cfg.pages, rawBaseURL)
 
-	fmt.Printf("Crawling completed. Found %d pages\n", len(cfg.pages))
 }
 
 func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {

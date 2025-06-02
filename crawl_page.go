@@ -38,8 +38,6 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		return
 	}
 
-	fmt.Printf("crawling %s\n", rawCurrentURL)
-
 	htmlBody, err := getHTML(rawCurrentURL)
 	if err != nil {
 		fmt.Printf("Error - getHTML: %v", err)
